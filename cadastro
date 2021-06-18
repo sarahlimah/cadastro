@@ -1,0 +1,168 @@
+import re
+import sqlite3
+import tkinter as tk
+import tkinter.ttk as tkk
+from tkinter import messagebox
+
+
+class ConectarDB:
+    def __init__(self):
+        self.con = sqlite3.connect('db.sqlite3')
+        self.cur = self.con.cursor()
+        self.criar_tabela()
+
+    def criar_tabela(self):
+        try:
+            self.cur.execute('''CREATE TABLE IF NOT EXISTS Nomenotabela (
+                n_materia TEXT,
+                prova TEXT,
+                nota TEXT)''')
+        except Exception as e:
+            print('[x] Falha ao criar tabela: %s [x]' % e)
+        else:
+            print('\n[!] Tabela criada com sucesso [!]\n')
+
+    def inserir_registro(self, nmateria, prova, nota):
+        try:
+            self.cur.execute(
+                '''INSERT INTO Nomenotabela VALUES (?, ?, ?)''', (nmateria, prova, nota,))
+        except Exception as e:
+            print('\n[x] Falha ao inserir registro [x]\n')
+            print('[x] Revertendo operação (rollback) %s [x]\n' % e)
+            self.con.rollback()
+        else:
+            self.con.commit()
+            print('\n[!] Registro inserido com sucesso [!]\n')
+
+    def consultar_registros(self):
+        return self.cur.execute('SELECT rowid, * FROM Nomenotabela').fetchall()
+
+    def consultar_ultimo_rowid(self):
+        return self.cur.execute('SELECT MAX(rowid) FROM Nomenotabela').fetchone()
+
+    def remover_registro(self, rowid):
+        try:
+            self.cur.execute("DELETE FROM Nomenotabela WHERE rowid=?", (rowid,))
+        except Exception as e:
+            print('\n[x] Falha ao remover registro [x]\n')
+            print('[x] Revertendo operação (rollback) %s [x]\n' % e)
+            self.con.rollback()
+        else:
+            self.con.commit()
+            print('\n[!] Registro removido com sucesso [!]\n')
+
+
+class Janela(tk.Frame):
+    """Janela principal"""
+
+    def __init__(self, master=None):
+        """Construtor"""
+        super().__init__(master)
+
+        largura = round(self.winfo_screenwidth() / 2)
+        altura = round(self.winfo_screenheight() / 2)
+        tamanho = ('%sx%s' % (largura, altura))
+
+        master.title('Exemplo')
+
+
+        master.geometry(tamanho)
+
+
+        self.banco = ConectarDB()
+
+        self.pack()
+
+        self.criar_widgets()
+
+    def criar_widgets(self):
+
+        frame1 = tk.Frame(self)
+        frame1.pack(side=tk.TOP, fill=tk.BOTH, padx=5, pady=5)
+
+        frame2 = tk.Frame(self)
+        frame2.pack(fill=tk.BOTH, expand=True)
+
+        frame3 = tk.Frame(self)
+        frame3.pack(side=tk.BOTTOM, padx=5)
+
+
+        label_materia = tk.Label(frame1, text='Aluno')
+        label_materia.grid(row=0, column=0)
+
+        label_materia = tk.Label(frame1, text='Prova')
+        label_materia.grid(row=0, column=1)
+
+        label_prova = tk.Label(frame1, text='Matéria')
+        label_prova.grid(row=0, column=2)
+
+        label_recebido = tk.Label(frame1, text='Nota')
+        label_recebido.grid(row=0, column=3)
+
+
+        self.entry_aluno = tk.Entry(frame1)
+        self.entry_aluno.grid(row=1, column=0)
+
+        self.entry_prova = tk.Entry(frame1)
+        self.entry_prova.grid(row=1, column=1)
+
+        self.entry_materia = tk.Entry(frame1)
+        self.entry_materia.grid(row=1, column=2, padx=10)
+
+        self.entry_nota = tk.Entry(frame1)
+        self.entry_nota.grid(row=1, column=3)
+
+        button_adicionar = tk.Button(frame1, text='Adicionar', bg='blue', fg='white')
+
+        button_adicionar['command'] = self.adicionar_registro
+        button_adicionar.grid(row=0, column=5, rowspan=2, padx=10)
+
+
+        self.treeview = tkk.Treeview(frame2, columns=(' aluno', 'prova', 'matéria', 'nota'))
+        self.treeview.heading('#0', text='Aluno')
+        self.treeview.heading('#1', text=' Prova')
+        self.treeview.heading('#2', text='Matéria')
+        self.treeview.heading('#3', text='Nota')
+
+
+        for row in self.banco.consultar_registros():
+            self.treeview.insert('', 'end', text=row[0], values=(row[1], row[2], row[3]))
+
+        self.treeview.pack(fill=tk.BOTH, expand=True)
+
+        button_excluir = tk.Button(frame3, text='Excluir', bg='red', fg='white')
+        button_excluir['command'] = self.excluir_registro
+        button_excluir.pack(pady=10)
+
+    def adicionar_registro(self):
+        materia = self.entry_materia.get()
+        prova = self.entry_prova.get()
+        nota = self.entry_nota.get()
+
+        validar_nota = re.search(r'', nota)
+
+        if validar_nota:
+
+            self.banco.inserir_registro(nmateria=materia, prova=prova, nota=nota)
+
+            rowid = self.banco.consultar_ultimo_rowid()[0]
+
+            self.treeview.insert('', 'end', text=rowid, values=(materia, prova, nota))
+        
+
+    def excluir_registro(self):
+        if not self.treeview.focus():
+            messagebox.showerror('Erro', 'Nenhum item selecionado')
+        else:
+            item_selecionado = self.treeview.focus()
+
+            rowid = self.treeview.item(item_selecionado)
+
+            self.banco.remover_registro(rowid['text'])
+
+            self.treeview.delete(item_selecionado)
+
+
+root = tk.Tk()
+app = Janela(master=root)
+app.mainloop()
